@@ -81,7 +81,7 @@ import org.koin.compose.viewmodel.koinViewModel
 fun SearchScreen(
     onBack: () -> Unit,
     onOpenFile: (String, PreviewSequence) -> Unit,
-    onOpenFolder: (String) -> Unit,
+    onOpenFolder: (String, String?) -> Unit,
     viewModel: SearchViewModel = koinViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -206,7 +206,7 @@ fun SearchScreen(
                         items(state.folders, key = { "folder_${it.id}" }) { folder ->
                             FolderRow(
                                 folder = folder,
-                                onClick = { onOpenFolder(folder.id) },
+                                onClick = { onOpenFolder(folder.id, null) },
                                 modifier = Modifier.animateItem()
                             )
                         }
@@ -259,18 +259,19 @@ private fun SearchSelectionBar(
     menuExpanded: Boolean,
     onMenuExpandedChange: (Boolean) -> Unit,
     viewModel: SearchViewModel,
-    onOpenFolder: (String) -> Unit
+    onOpenFolder: (String, String?) -> Unit
 ) {
-    val folderId = state.soleFolderId
+    val selectedFile = state.selectedFiles.singleOrNull()
+    val folderId = selectedFile?.folderId
     val actions = buildList {
-        if (folderId != null) {
+        if (folderId != null && selectedFile?.isArchived != true) {
             add(
                 MenuAction(
                     label = stringResource(Res.string.search_open_folder),
                     icon = Icons.Filled.FolderOpen
                 ) {
                     viewModel.clearSelection()
-                    onOpenFolder(folderId)
+                    onOpenFolder(folderId, selectedFile?.id)
                 }
             )
         }

@@ -207,6 +207,16 @@ class FileRepositoryImpl(
             folderDao.observeFavorites(chatId).map { list -> list.map { it.toDomain() } }
         }
 
+    override fun observeArchivedFolders(): Flow<List<DriveFolder>> =
+        activeChannel.observe().flatMapLatest { chatId ->
+            folderDao.observeArchived(chatId).map { list -> list.map { it.toDomain() } }
+        }
+
+    override fun observeHiddenFolders(): Flow<List<DriveFolder>> =
+        activeChannel.observe().flatMapLatest { chatId ->
+            folderDao.observeHidden(chatId).map { list -> list.map { it.toDomain() } }
+        }
+
     override suspend fun createFolder(parentId: String?, name: String): AppResult<DriveFolder> {
         val sanitized = FileNameUtils.sanitize(name)
         val siblings = folderDao.namesIn(parentId, activeChannel.id())
@@ -473,6 +483,16 @@ class FileRepositoryImpl(
         markFolderStateDirty()
     }
 
+    override suspend fun setFolderHidden(id: String, hidden: Boolean) {
+        folderDao.setHidden(id, hidden)
+        markFolderStateDirty()
+    }
+
+    override suspend fun setFolderArchived(id: String, archived: Boolean) {
+        folderDao.setArchived(id, archived)
+        markFolderStateDirty()
+    }
+
     override suspend fun importLocalFile(
         localPath: String,
         folderId: String?,
@@ -655,12 +675,15 @@ class FileRepositoryImpl(
     }
 
     override suspend fun deleteLocalCopy(ids: List<String>): AppResult<LocalCleanup> {
-        val candidates = fileDao.byIds(ids).filter { entity ->
+        val kept = fileDao.keptOfflineIds(ids).toSet()
+        val candidates = fileDao.byIds(ids - kept).filter { entity ->
             entity.localPath != null &&
                     entity.messageId != null &&
                     entity.backupState == BackupState.BACKED_UP
         }
-        if (candidates.isEmpty()) return AppResult.Success(LocalCleanup(0))
+        if (candidates.isEmpty()) {
+            return AppResult.Success(LocalCleanup(0, keptPinned = kept.size))
+        }
 
         val cleanup = localCopyDeleter.delete(candidates.mapNotNull { it.localPath })
         if (cleanup.consentRequest != null) return AppResult.Success(cleanup)
@@ -673,7 +696,7 @@ class FileRepositoryImpl(
                 cleared++
             }
         }
-        return AppResult.Success(LocalCleanup(cleared))
+        return AppResult.Success(LocalCleanup(cleared, keptPinned = kept.size))
     }
 
     companion object {

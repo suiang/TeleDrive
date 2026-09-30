@@ -1,5 +1,19 @@
 package com.drdisagree.teledrive.presentation.files
 
+import androidx.compose.material.icons.filled.Star
+import com.drdisagree.teledrive.resources.preview_remove_favorites
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.paging.LoadState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CleaningServices
@@ -199,6 +213,7 @@ import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.stringResource
 import java.io.File
 import org.koin.compose.viewmodel.koinViewModel
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(
     ExperimentalMaterial3Api::class,
@@ -207,6 +222,7 @@ import org.koin.compose.viewmodel.koinViewModel
 )
 @Composable
 fun FilesScreen(
+    focusFileId: String? = null,
     onOpenFolder: (String) -> Unit,
     onOpenCrumb: (String?) -> Unit,
     onOpenFile: (String, PreviewSequence) -> Unit,
@@ -283,6 +299,37 @@ fun FilesScreen(
     }
     val lifted by rememberToolbarLift(gridState)
 
+    var highlightedFileId by remember(focusFileId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(focusFileId) {
+        val target = focusFileId ?: return@LaunchedEffect
+        // The effect starts before paging has anything, so wait for the first
+        // page rather than giving up on an empty list.
+        snapshotFlow { files.itemCount to files.loadState.refresh }
+            .first { (count, refresh) -> count > 0 && refresh !is LoadState.Loading }
+
+        var rounds = 0
+        while (rounds++ < FOCUS_PAGE_LIMIT) {
+            val index = (0 until files.itemCount)
+                .firstOrNull { files.peek(it)?.id == target }
+            if (index != null) {
+                gridState.animateScrollToItem(state.folders.size + index)
+                highlightedFileId = target
+                delay(FOCUS_HIGHLIGHT_MS.milliseconds)
+                highlightedFileId = null
+                return@LaunchedEffect
+            }
+            if (files.loadState.append.endOfPaginationReached) return@LaunchedEffect
+
+            val loaded = files.itemCount
+            files[loaded - 1]
+            val grew = withTimeoutOrNull(FOCUS_PAGE_WAIT_MS.milliseconds) {
+                snapshotFlow { files.itemCount to files.loadState.append.endOfPaginationReached }
+                    .first { (count, ended) -> count > loaded || ended }
+            }
+            if (grew == null) return@LaunchedEffect
+        }
+    }
+
     val density = LocalDensity.current
     var snackbarHeight by remember { mutableStateOf(0.dp) }
     val fabLift by animateDpAsState(targetValue = snackbarHeight, label = "fabLift")
@@ -356,9 +403,19 @@ fun FilesScreen(
                                     val organize = buildList {
                                         add(
                                             MenuAction(
-                                                label = stringResource(Res.string.common_add_favorites),
-                                                icon = Icons.Filled.StarOutline
-                                            ) { viewModel.favoriteSelected(true) }
+                                                label = stringResource(
+                                                    if (state.allSelectedFavorite) {
+                                                        Res.string.preview_remove_favorites
+                                                    } else {
+                                                        Res.string.common_add_favorites
+                                                    }
+                                                ),
+                                                icon = if (state.allSelectedFavorite) {
+                                                    Icons.Filled.Star
+                                                } else {
+                                                    Icons.Filled.StarOutline
+                                                }
+                                            ) { viewModel.favoriteSelected(!state.allSelectedFavorite) }
                                         )
                                         add(
                                             MenuAction(
@@ -372,20 +429,18 @@ fun FilesScreen(
                                                 icon = Icons.Filled.PushPin
                                             ) { viewModel.pinSelected(!state.allSelectedPinned) }
                                         )
-                                        if (filesOnly) {
-                                            add(
-                                                MenuAction(
-                                                    label = stringResource(Res.string.files_hide),
-                                                    icon = Icons.Filled.VisibilityOff
-                                                ) { viewModel.hideSelected(true) }
-                                            )
-                                            add(
-                                                MenuAction(
-                                                    label = stringResource(Res.string.files_archive),
-                                                    icon = Icons.Filled.Archive
-                                                ) { viewModel.archiveSelected(true) }
-                                            )
-                                        }
+                                        add(
+                                            MenuAction(
+                                                label = stringResource(Res.string.files_hide),
+                                                icon = Icons.Filled.VisibilityOff
+                                            ) { viewModel.hideSelected(true) }
+                                        )
+                                        add(
+                                            MenuAction(
+                                                label = stringResource(Res.string.files_archive),
+                                                icon = Icons.Filled.Archive
+                                            ) { viewModel.archiveSelected(true) }
+                                        )
                                     }
 
                                     val storage = buildList {
@@ -648,6 +703,7 @@ fun FilesScreen(
                             )
                         } else {
                             FilesContent(
+                                highlightedFileId = highlightedFileId,
                                 gridState = gridState,
                                 state = state,
                                 files = files,
@@ -687,7 +743,8 @@ fun FilesScreen(
             confirmLabel = stringResource(
                 if (moving) Res.string.files_move_here else Res.string.files_copy_here
             ),
-            viewModel = viewModel,
+            loadChildren = viewModel::childFolders,
+            createFolder = viewModel::createFolderIn,
             excludedFolderIds = state.folderSelection,
             onConfirm = { target ->
                 showMovePicker = false
@@ -771,7 +828,8 @@ fun FilesScreen(
         FolderPickerHost(
             title = stringResource(Res.string.files_share_destination_title),
             confirmLabel = stringResource(Res.string.files_share_destination_confirm),
-            viewModel = viewModel,
+            loadChildren = viewModel::childFolders,
+            createFolder = viewModel::createFolderIn,
             onConfirm = { target -> viewModel.acceptShare(sharedUris, target) },
             onDismiss = viewModel::dismissShare
         )
@@ -882,6 +940,7 @@ private const val INLINE_CRUMBS = 3
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FilesContent(
+    highlightedFileId: String?,
     gridState: LazyGridState,
     state: FilesUiState,
     files: LazyPagingItems<DriveFile>,
@@ -901,7 +960,10 @@ private fun FilesContent(
                 if (index < state.folders.size) {
                     folderIds += state.folders[index].id
                 } else {
-                    files.peek(index - state.folders.size)?.let { fileIds += it.id }
+                    val fileIndex = index - state.folders.size
+                    if (fileIndex < files.itemCount) {
+                        files.peek(fileIndex)?.let { fileIds += it.id }
+                    }
                 }
             }
             viewModel.extendRangeSelection(fileIds, folderIds)
@@ -960,6 +1022,7 @@ private fun FilesContent(
         ) { index ->
             val file = files[index] ?: return@items
             val selected = file.id in state.selection
+            val highlighted = file.id == highlightedFileId
             if (state.viewMode == ViewMode.GRID) {
                 FileGridItem(
                     file = file,
@@ -977,7 +1040,7 @@ private fun FilesContent(
                         )
                     },
                     onLongClick = { viewModel.toggleSelection(file.id) },
-                    modifier = Modifier.animateItem()
+                    modifier = Modifier.animateItem().focusHighlight(highlighted)
                 )
             } else {
                 FileListItem(
@@ -997,7 +1060,7 @@ private fun FilesContent(
                         )
                     },
                     onLongClick = { viewModel.toggleSelection(file.id) },
-                    modifier = Modifier.animateItem()
+                    modifier = Modifier.animateItem().focusHighlight(highlighted)
                 )
             }
         }
@@ -1069,10 +1132,11 @@ private fun SortMenu(
  * repository by caching each level as it is browsed.
  */
 @Composable
-private fun FolderPickerHost(
+internal fun FolderPickerHost(
     title: String,
     confirmLabel: String,
-    viewModel: FilesViewModel,
+    loadChildren: suspend (String?) -> List<DriveFolder>,
+    createFolder: suspend (String?, String) -> Boolean,
     onConfirm: (String?) -> Unit,
     onDismiss: () -> Unit,
     excludedFolderIds: Set<String> = emptySet()
@@ -1087,7 +1151,7 @@ private fun FolderPickerHost(
     LaunchedEffect(requestedLevel, reloadToken) {
         val level = requestedLevel ?: return@LaunchedEffect
         val parentId = level.takeIf { it != ROOT_KEY }
-        val folders = viewModel.childFolders(parentId)
+        val folders = loadChildren(parentId)
         childrenCache[level] = folders
         folders.forEach { folder ->
             namesCache[folder.id] = folder.name
@@ -1110,8 +1174,7 @@ private fun FolderPickerHost(
         excludedFolderIds = excludedFolderIds,
         onCreateFolder = { parentId, name ->
             scope.launch {
-                if (viewModel.createFolderIn(parentId, name)) {
-                    /* Drop the cached level so the new folder shows up. */
+                if (createFolder(parentId, name)) {
                     childrenCache.remove(parentId ?: ROOT_KEY)
                     requestedLevel = parentId ?: ROOT_KEY
                     reloadToken++
@@ -1128,3 +1191,39 @@ private const val ROOT_KEY = "__root__"
 private const val FAB_SCROLL_THRESHOLD = 6f
 
 private val SORT_ICON_SIZE = 18.dp
+
+/**
+ * Brief tint so a file reached from search is findable in a long list. Both
+ * item shapes paint their own background, so this draws over them rather than
+ * behind, where it would never be seen.
+ */
+@Composable
+private fun Modifier.focusHighlight(active: Boolean): Modifier {
+    val alpha by animateFloatAsState(
+        targetValue = if (active) FOCUS_TINT_ALPHA else 0f,
+        label = "focusHighlight"
+    )
+    val tint = MaterialTheme.colorScheme.secondary
+    return drawWithContent {
+        drawContent()
+        if (alpha <= 0f) return@drawWithContent
+        val corners = CornerRadius(FOCUS_TINT_RADIUS.toPx())
+        drawRoundRect(color = tint, alpha = alpha * FOCUS_FILL_SCALE, cornerRadius = corners)
+        // A tint alone disappears against a bright thumbnail, so the outline
+        // carries the signal and the fill only softens it.
+        drawRoundRect(
+            color = tint,
+            alpha = alpha,
+            cornerRadius = corners,
+            style = Stroke(width = FOCUS_OUTLINE_WIDTH.toPx())
+        )
+    }
+}
+
+private const val FOCUS_PAGE_LIMIT = 10
+private const val FOCUS_PAGE_WAIT_MS = 5_000L
+private const val FOCUS_HIGHLIGHT_MS = 1_800L
+private const val FOCUS_TINT_ALPHA = 0.9f
+private const val FOCUS_FILL_SCALE = 0.25f
+private val FOCUS_OUTLINE_WIDTH = 3.dp
+private val FOCUS_TINT_RADIUS = 18.dp

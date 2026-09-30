@@ -1,5 +1,32 @@
 package com.drdisagree.teledrive.presentation.gallery
 
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
+import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.DriveFileRenameOutline
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material.icons.filled.VisibilityOff
+import com.drdisagree.teledrive.presentation.components.ActionMenu
+import com.drdisagree.teledrive.presentation.components.MenuAction
+import com.drdisagree.teledrive.resources.common_keep_on_device
+import com.drdisagree.teledrive.resources.common_organize
+import com.drdisagree.teledrive.resources.common_stop_keeping_on_device
+import com.drdisagree.teledrive.resources.common_storage_actions
+import com.drdisagree.teledrive.resources.files_archive
+import com.drdisagree.teledrive.resources.files_hide
+import com.drdisagree.teledrive.resources.preview_remove_favorites
+import androidx.compose.material3.SnackbarHostState
+import com.drdisagree.teledrive.presentation.common.CollectSnackbarMessages
+import com.drdisagree.teledrive.presentation.components.BottomBarSnackbarHost
+import com.drdisagree.teledrive.presentation.files.FolderPickerHost
+import com.drdisagree.teledrive.resources.files_move_to
+import com.drdisagree.teledrive.resources.files_move_here
 import com.drdisagree.teledrive.presentation.common.AppBackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -214,7 +241,25 @@ fun GalleryScreen(
     val refreshing by viewModel.refreshing.collectAsStateWithLifecycle()
     var confirmTrash by remember { mutableStateOf(false) }
     var showSelectionOverflow by remember { mutableStateOf(false) }
+    var showMovePicker by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
     val renameTarget by viewModel.renameTarget.collectAsStateWithLifecycle()
+
+    CollectSnackbarMessages(viewModel.messages, snackbarHostState)
+
+    if (showMovePicker) {
+        FolderPickerHost(
+            title = stringResource(Res.string.files_move_to),
+            confirmLabel = stringResource(Res.string.files_move_here),
+            loadChildren = viewModel::childFolders,
+            createFolder = viewModel::createFolderIn,
+            onConfirm = { target ->
+                showMovePicker = false
+                viewModel.moveSelected(target)
+            },
+            onDismiss = { showMovePicker = false }
+        )
+    }
 
     if (confirmTrash) {
         ConfirmDialog(
@@ -262,6 +307,12 @@ fun GalleryScreen(
     val lifted by rememberToolbarLift(scrolled)
 
     Scaffold(
+        snackbarHost = {
+            BottomBarSnackbarHost(
+                hostState = snackbarHostState,
+                applyInset = !state.selectionMode
+            )
+        },
         topBar = {
             if (state.selectionMode) {
                 TopAppBar(
@@ -310,49 +361,109 @@ fun GalleryScreen(
                                     contentDescription = stringResource(Res.string.common_actions)
                                 )
                             }
-                            DropdownMenu(
-                                expanded = showSelectionOverflow,
-                                onDismissRequest = { showSelectionOverflow = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(Res.string.common_download)) },
-                                    enabled = state.capabilities.canDownload,
-                                    onClick = {
-                                        showSelectionOverflow = false
-                                        viewModel.downloadSelected()
-                                    }
+                            val storage = buildList {
+                                if (state.capabilities.canDownload) {
+                                    add(
+                                        MenuAction(
+                                            label = stringResource(Res.string.common_download),
+                                            icon = Icons.Filled.Download
+                                        ) { viewModel.downloadSelected() }
+                                    )
+                                }
+                                if (state.capabilities.canUpload) {
+                                    add(
+                                        MenuAction(
+                                            label = stringResource(Res.string.common_upload),
+                                            icon = Icons.Filled.Upload
+                                        ) { viewModel.uploadSelected() }
+                                    )
+                                }
+                            }
+                            val organize = buildList {
+                                add(
+                                    MenuAction(
+                                        label = stringResource(
+                                            if (state.allSelectedFavorite) {
+                                                Res.string.preview_remove_favorites
+                                            } else {
+                                                Res.string.common_add_favorites
+                                            }
+                                        ),
+                                        icon = if (state.allSelectedFavorite) {
+                                            Icons.Filled.Star
+                                        } else {
+                                            Icons.Filled.StarOutline
+                                        }
+                                    ) { viewModel.favoriteSelected(!state.allSelectedFavorite) }
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(Res.string.common_upload)) },
-                                    enabled = state.capabilities.canUpload,
-                                    onClick = {
-                                        showSelectionOverflow = false
-                                        viewModel.uploadSelected()
-                                    }
+                                add(
+                                    MenuAction(
+                                        label = stringResource(
+                                            if (state.allSelectedPinned) {
+                                                Res.string.common_stop_keeping_on_device
+                                            } else {
+                                                Res.string.common_keep_on_device
+                                            }
+                                        ),
+                                        icon = Icons.Filled.PushPin
+                                    ) { viewModel.pinSelected(!state.allSelectedPinned) }
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(Res.string.common_rename)) },
-                                    enabled = state.selection.size == 1,
-                                    onClick = {
-                                        showSelectionOverflow = false
-                                        viewModel.requestRenameSelected()
-                                    }
+                                add(
+                                    MenuAction(
+                                        label = stringResource(Res.string.files_hide),
+                                        icon = Icons.Filled.VisibilityOff
+                                    ) { viewModel.hideSelected(true) }
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(Res.string.common_add_favorites)) },
-                                    onClick = {
-                                        showSelectionOverflow = false
-                                        viewModel.favoriteSelected()
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(Res.string.common_move_trash)) },
-                                    onClick = {
-                                        showSelectionOverflow = false
-                                        confirmTrash = true
-                                    }
+                                add(
+                                    MenuAction(
+                                        label = stringResource(Res.string.files_archive),
+                                        icon = Icons.Filled.Archive
+                                    ) { viewModel.archiveSelected(true) }
                                 )
                             }
+                            val actions = buildList {
+                                if (state.selection.size == 1) {
+                                    add(
+                                        MenuAction(
+                                            label = stringResource(Res.string.common_rename),
+                                            icon = Icons.Filled.DriveFileRenameOutline
+                                        ) { viewModel.requestRenameSelected() }
+                                    )
+                                }
+                                add(
+                                    MenuAction(
+                                        label = stringResource(Res.string.files_move_to),
+                                        icon = Icons.AutoMirrored.Filled.DriveFileMove
+                                    ) { showMovePicker = true }
+                                )
+                                if (storage.isNotEmpty()) {
+                                    add(
+                                        MenuAction(
+                                            label = stringResource(Res.string.common_storage_actions),
+                                            icon = Icons.Filled.Storage,
+                                            children = storage
+                                        )
+                                    )
+                                }
+                                add(
+                                    MenuAction(
+                                        label = stringResource(Res.string.common_organize),
+                                        icon = Icons.Filled.Tune,
+                                        children = organize
+                                    )
+                                )
+                                add(
+                                    MenuAction(
+                                        label = stringResource(Res.string.common_move_trash),
+                                        icon = Icons.Filled.DeleteOutline
+                                    ) { confirmTrash = true }
+                                )
+                            }
+                            ActionMenu(
+                                expanded = showSelectionOverflow,
+                                onDismissRequest = { showSelectionOverflow = false },
+                                actions = actions
+                            )
                         }
                     }
                 )

@@ -10,6 +10,7 @@ import androidx.room.RoomRawQuery
 import androidx.room.Update
 import com.drdisagree.teledrive.data.local.entity.AlbumSummary
 import com.drdisagree.teledrive.data.local.entity.FileEntity
+import com.drdisagree.teledrive.data.local.entity.FolderEntity
 import com.drdisagree.teledrive.data.local.entity.HomeAggregates
 import com.drdisagree.teledrive.data.local.entity.LocalCopyRef
 import com.drdisagree.teledrive.domain.model.BackupState
@@ -83,10 +84,10 @@ interface FileDao {
         chatId: Long?
     ): List<FileEntity>
 
-    @RawQuery(observedEntities = [FileEntity::class])
+    @RawQuery(observedEntities = [FileEntity::class, FolderEntity::class])
     fun pagingSource(query: RoomRawQuery): PagingSource<Int, FileEntity>
 
-    @RawQuery(observedEntities = [FileEntity::class])
+    @RawQuery(observedEntities = [FileEntity::class, FolderEntity::class])
     fun observeList(query: RoomRawQuery): Flow<List<FileEntity>>
 
     @RawQuery
@@ -189,6 +190,21 @@ interface FileDao {
            )"""
     )
     suspend fun isKeptOffline(id: String): Boolean
+
+    @Query(
+        """WITH RECURSIVE pinned_folders(id) AS (
+               SELECT id FROM folders WHERE isPinned = 1
+               UNION
+               SELECT folders.id FROM folders
+               JOIN pinned_folders ON folders.parentId = pinned_folders.id
+           )
+           SELECT id FROM files
+           WHERE id IN (:ids)
+             AND (isPinned = 1
+                  OR (folderId IS NOT NULL
+                      AND folderId IN (SELECT id FROM pinned_folders)))"""
+    )
+    suspend fun keptOfflineIds(ids: List<String>): List<String>
 
     @Query("UPDATE files SET contentHash = :contentHash WHERE id = :id")
     suspend fun setContentHash(id: String, contentHash: String)

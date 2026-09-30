@@ -48,6 +48,7 @@ import com.drdisagree.teledrive.resources.files_moving_to_trash
 import com.drdisagree.teledrive.resources.files_queued_for_download
 import com.drdisagree.teledrive.resources.files_queued_for_upload
 import com.drdisagree.teledrive.resources.files_queued_partial
+import com.drdisagree.teledrive.resources.files_kept_pinned_copies
 import com.drdisagree.teledrive.resources.files_removed_local_copies
 import com.drdisagree.teledrive.resources.files_root_name
 import com.drdisagree.teledrive.resources.files_share_needs_local
@@ -112,6 +113,11 @@ data class FilesUiState(
         get() = selectionMode &&
                 !capabilities.anyUnpinned &&
                 folders.filter { it.id in folderSelection }.all { it.isPinned }
+
+    val allSelectedFavorite: Boolean
+        get() = selectionMode &&
+                !capabilities.anyUnfavorited &&
+                folders.filter { it.id in folderSelection }.all { it.isFavorite }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -189,18 +195,19 @@ class FilesViewModel(
         }
     }
 
-    private val querySpec: Flow<FileQuerySpec> = settingsRepository.preferences
-        .map { prefs ->
+    private val currentFolder: Flow<DriveFolder?> = folderFlow()
+
+    private val querySpec: Flow<FileQuerySpec> =
+        combine(settingsRepository.preferences, currentFolder) { prefs, folder ->
             FileQuerySpec(
                 folderId = folderId,
                 filterByFolder = true,
-                showHidden = false,
-                showArchived = false,
+                showHidden = folder?.isHidden == true,
+                showArchived = folder?.isArchived == true,
                 sortField = prefs.sortField,
                 sortDirection = prefs.sortDirection
             )
-        }
-        .distinctUntilChanged()
+        }.distinctUntilChanged()
 
     val pagedFiles: Flow<PagingData<DriveFile>> = querySpec
         .flatMapLatest { fileRepository.pagedFiles(it) }
@@ -230,12 +237,14 @@ class FilesViewModel(
         settingsRepository.preferences,
         selectionCapabilities,
         folderSelection,
-        folderFlow(),
-        settingsRepository.preferences.flatMapLatest { prefs ->
+        currentFolder,
+        combine(settingsRepository.preferences, currentFolder) { prefs, folder ->
+            prefs to folder
+        }.flatMapLatest { (prefs, folder) ->
             fileRepository.observeFolders(
                 parentId = folderId,
-                showHidden = false,
-                showArchived = false,
+                showHidden = folder?.isHidden == true,
+                showArchived = folder?.isArchived == true,
                 sortField = prefs.sortField,
                 sortDirection = prefs.sortDirection
             )
@@ -475,14 +484,14 @@ class FilesViewModel(
     }
 
     /**
-     * Pinning promises an offline copy, so anything missing one is queued.
-     * Paths are reconciled first because a copy deleted outside the app still
-     * reads as present until something looks.
+     * Pinning promises an offline copy, so a file with none is queued. It does
+     * not reconcile first: that decides "missing" from File.exists(), which is
+     * false for any path this process cannot see, and would re-download copies
+     * that are sitting on the device already.
      */
     private suspend fun fetchForOffline(fileIds: List<String>) {
         val ids = fileIds.distinct()
         if (ids.isEmpty()) return
-        fileRepository.reconcileLocalCopies(ids)
         val missing = fileRepository.filesByIds(ids)
             .filter { it.hasRemoteCopy && !it.hasLocalCopy }
         if (missing.isEmpty()) return
@@ -504,14 +513,22 @@ class FilesViewModel(
 
     fun hideSelected(hidden: Boolean) {
         val ids = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
         clearSelection()
-        viewModelScope.launch { fileRepository.setFilesHidden(ids, hidden) }
+        viewModelScope.launch {
+            if (ids.isNotEmpty()) fileRepository.setFilesHidden(ids, hidden)
+            folderIds.forEach { fileRepository.setFolderHidden(it, hidden) }
+        }
     }
 
     fun archiveSelected(archived: Boolean) {
         val ids = selection.value.toList()
+        val folderIds = folderSelection.value.toList()
         clearSelection()
-        viewModelScope.launch { fileRepository.setFilesArchived(ids, archived) }
+        viewModelScope.launch {
+            if (ids.isNotEmpty()) fileRepository.setFilesArchived(ids, archived)
+            folderIds.forEach { fileRepository.setFolderArchived(it, archived) }
+        }
     }
 
     fun moveSelected(targetFolderId: String?) {
@@ -598,11 +615,16 @@ class FilesViewModel(
                         _deleteConsentRequests.tryEmit(consent)
                     } else {
                         pendingLocalCopyIds = emptyList()
+                        val kept = result.value.keptPinned
                         _messages.tryEmit(
-                            UiText.Resource(
-                                Res.string.files_removed_local_copies,
-                                result.value.deletedCount
-                            )
+                            if (kept > 0 && result.value.deletedCount == 0) {
+                                UiText.Resource(Res.string.files_kept_pinned_copies, kept)
+                            } else {
+                                UiText.Resource(
+                                    Res.string.files_removed_local_copies,
+                                    result.value.deletedCount
+                                )
+                            }
                         )
                     }
                 }

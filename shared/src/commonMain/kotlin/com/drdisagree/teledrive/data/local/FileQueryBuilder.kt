@@ -12,6 +12,24 @@ import com.drdisagree.teledrive.domain.model.SortDirection
  * compile-time queries without an explosion of variants, hence raw queries.
  */
 object FileQueryBuilder {
+
+    private fun coveringColumn(spec: FileQuerySpec): String? = when {
+        spec.favoritesOnly -> "isFavorite"
+        spec.archivedOnly -> "isArchived"
+        spec.hiddenOnly -> "isHidden"
+        else -> null
+    }
+
+    private fun folderTree(name: String, column: String): String =
+        "$name(id) AS (" +
+                "SELECT id FROM folders WHERE $column = 1 " +
+                "UNION " +
+                "SELECT folders.id FROM folders " +
+                "JOIN $name ON folders.parentId = $name.id)"
+
+    private fun notUnder(name: String): String =
+        " AND (folderId IS NULL OR folderId NOT IN (SELECT id FROM $name))"
+
     fun build(spec: FileQuerySpec): RoomRawQuery = query("*", spec)
 
     /** Same filter and order as [build], reading only the ids of every match. */
@@ -20,6 +38,7 @@ object FileQueryBuilder {
     private fun query(projection: String, spec: FileQuerySpec): RoomRawQuery {
         val where = StringBuilder("trashedAt IS NULL")
         val args = mutableListOf<Any>()
+        val trees = mutableListOf<String>()
 
         val chatId = spec.chatId
         if (chatId != null) {
@@ -69,8 +88,20 @@ object FileQueryBuilder {
         if (spec.favoritesOnly) where.append(" AND isFavorite = 1")
         if (spec.hiddenOnly) where.append(" AND isHidden = 1")
         if (spec.archivedOnly) where.append(" AND isArchived = 1")
-        if (!spec.showHidden) where.append(" AND isHidden = 0")
-        if (!spec.showArchived) where.append(" AND isArchived = 0")
+        coveringColumn(spec)?.let { column ->
+            trees += folderTree("covering_folders", column)
+            where.append(notUnder("covering_folders"))
+        }
+        if (!spec.showHidden) {
+            where.append(" AND isHidden = 0")
+            trees += folderTree("hidden_folders", "isHidden")
+            where.append(notUnder("hidden_folders"))
+        }
+        if (!spec.showArchived) {
+            where.append(" AND isArchived = 0")
+            trees += folderTree("archived_folders", "isArchived")
+            where.append(notUnder("archived_folders"))
+        }
 
         val orderColumn = when (spec.sortField) {
             FileSortField.NAME -> "name COLLATE NOCASE"
@@ -85,7 +116,8 @@ object FileQueryBuilder {
             SortDirection.DESCENDING -> "DESC"
         }
 
-        val sql = "SELECT $projection FROM files WHERE $where " +
+        val prefix = if (trees.isEmpty()) "" else "WITH RECURSIVE ${trees.joinToString(", ")} "
+        val sql = prefix + "SELECT $projection FROM files WHERE $where " +
                 "ORDER BY $orderColumn $direction, id ASC"
         return RoomRawQuery(sql) { statement ->
             args.forEachIndexed { index, value ->

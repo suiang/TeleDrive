@@ -22,25 +22,25 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.drdisagree.teledrive.core.permissions.AppPermission
+import com.drdisagree.teledrive.core.permissions.PermissionChecker
 import com.drdisagree.teledrive.presentation.platform.LocalPermissionRequester
 import com.drdisagree.teledrive.presentation.platform.LocalSystemScreens
 import com.drdisagree.teledrive.resources.Res
 import com.drdisagree.teledrive.resources.permission_not_allowed
 import com.drdisagree.teledrive.resources.permissions_allowed
-import com.drdisagree.teledrive.resources.permissions_not_allowed_optional
 import com.drdisagree.teledrive.resources.permissions_not_allowed
-import com.drdisagree.teledrive.core.permissions.AppPermission
-import com.drdisagree.teledrive.core.permissions.PermissionChecker
+import com.drdisagree.teledrive.resources.permissions_not_allowed_optional
+import org.jetbrains.compose.resources.stringResource
 
 /**
- * Lists every permission with its current state. Tapping a denied entry asks
- * again; once the system stops showing the dialog it falls back to the app's
- * settings page, which is the only way back from a permanent denial.
+ * Falls back to the app's settings page once the system stops showing the dialog, the only way back
+ * from a permanent denial.
  */
 @Composable
 fun PermissionsSection(permissionChecker: PermissionChecker) {
@@ -91,7 +91,7 @@ private fun PermissionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

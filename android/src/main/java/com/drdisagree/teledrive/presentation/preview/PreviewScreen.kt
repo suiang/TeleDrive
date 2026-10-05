@@ -81,8 +81,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import org.jetbrains.compose.resources.pluralStringResource
-import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -92,47 +91,8 @@ import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import org.koin.compose.viewmodel.koinViewModel
-import org.koin.compose.koinInject
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
-import com.drdisagree.teledrive.resources.files_hide
-import com.drdisagree.teledrive.resources.files_unhide
-import com.drdisagree.teledrive.resources.Res
-import com.drdisagree.teledrive.resources.file_count
-import com.drdisagree.teledrive.resources.folder_count
-import com.drdisagree.teledrive.resources.item_count
-import com.drdisagree.teledrive.resources.preview_share_chooser_title
-import com.drdisagree.teledrive.resources.common_actions
-import com.drdisagree.teledrive.resources.common_back
-import com.drdisagree.teledrive.resources.common_collapse
-import com.drdisagree.teledrive.resources.common_download
-import com.drdisagree.teledrive.resources.common_expand
-import com.drdisagree.teledrive.resources.common_free_space
-import com.drdisagree.teledrive.resources.common_move_trash
-import com.drdisagree.teledrive.resources.common_rename
-import com.drdisagree.teledrive.resources.common_rename_file
-import com.drdisagree.teledrive.resources.common_upload
-import com.drdisagree.teledrive.resources.note_edit_action
-import com.drdisagree.teledrive.resources.preview_add_favorites
-import com.drdisagree.teledrive.resources.preview_archive
-import com.drdisagree.teledrive.resources.preview_archive_format_title
-import com.drdisagree.teledrive.resources.preview_archive_packed_summary
-import com.drdisagree.teledrive.resources.preview_archive_packed_summary_saved
-import com.drdisagree.teledrive.resources.preview_chevron
-import com.drdisagree.teledrive.resources.preview_confirm_trash_file_message
-import com.drdisagree.teledrive.resources.preview_download_view
-import com.drdisagree.teledrive.resources.preview_extraction_supported_yet_download
-import com.drdisagree.teledrive.resources.preview_file_info
-import com.drdisagree.teledrive.resources.preview_move_to_trash
-import com.drdisagree.teledrive.resources.preview_no_preview
-import com.drdisagree.teledrive.resources.preview_preparing
-import com.drdisagree.teledrive.resources.preview_progress_bytes
-import com.drdisagree.teledrive.resources.preview_remove_favorites
-import com.drdisagree.teledrive.resources.preview_requires_download
-import com.drdisagree.teledrive.resources.preview_share_copy
-import com.drdisagree.teledrive.resources.preview_truncated_download_view
-import com.drdisagree.teledrive.resources.preview_unarchive
 import com.drdisagree.teledrive.core.files.MimeTypes
 import com.drdisagree.teledrive.core.media.PipController
 import com.drdisagree.teledrive.core.media.TelegramDataSourceFactory
@@ -154,9 +114,50 @@ import com.drdisagree.teledrive.presentation.components.FileInfoSheet
 import com.drdisagree.teledrive.presentation.components.LoadingState
 import com.drdisagree.teledrive.presentation.components.RenameDialog
 import com.drdisagree.teledrive.presentation.components.iconFor
-import kotlinx.coroutines.delay
+import com.drdisagree.teledrive.resources.Res
+import com.drdisagree.teledrive.resources.common_actions
+import com.drdisagree.teledrive.resources.common_back
+import com.drdisagree.teledrive.resources.common_collapse
+import com.drdisagree.teledrive.resources.common_download
+import com.drdisagree.teledrive.resources.common_expand
+import com.drdisagree.teledrive.resources.common_free_space
+import com.drdisagree.teledrive.resources.common_move_trash
+import com.drdisagree.teledrive.resources.common_rename
+import com.drdisagree.teledrive.resources.common_rename_file
+import com.drdisagree.teledrive.resources.common_upload
+import com.drdisagree.teledrive.resources.file_count
+import com.drdisagree.teledrive.resources.files_hide
+import com.drdisagree.teledrive.resources.files_unhide
+import com.drdisagree.teledrive.resources.folder_count
+import com.drdisagree.teledrive.resources.item_count
+import com.drdisagree.teledrive.resources.note_edit_action
+import com.drdisagree.teledrive.resources.preview_add_favorites
+import com.drdisagree.teledrive.resources.preview_archive
+import com.drdisagree.teledrive.resources.preview_archive_format_title
+import com.drdisagree.teledrive.resources.preview_archive_packed_summary
+import com.drdisagree.teledrive.resources.preview_archive_packed_summary_saved
+import com.drdisagree.teledrive.resources.preview_chevron
+import com.drdisagree.teledrive.resources.preview_confirm_trash_file_message
+import com.drdisagree.teledrive.resources.preview_download_view
+import com.drdisagree.teledrive.resources.preview_extraction_supported_yet_download
+import com.drdisagree.teledrive.resources.preview_file_info
+import com.drdisagree.teledrive.resources.preview_move_to_trash
+import com.drdisagree.teledrive.resources.preview_no_preview
+import com.drdisagree.teledrive.resources.preview_preparing
+import com.drdisagree.teledrive.resources.preview_progress_bytes
+import com.drdisagree.teledrive.resources.preview_remove_favorites
+import com.drdisagree.teledrive.resources.preview_requires_download
+import com.drdisagree.teledrive.resources.preview_share_chooser_title
+import com.drdisagree.teledrive.resources.preview_share_copy
+import com.drdisagree.teledrive.resources.preview_truncated_download_view
+import com.drdisagree.teledrive.resources.preview_unarchive
 import java.io.File
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.koinInject
+import org.koin.compose.viewmodel.koinViewModel
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @androidx.annotation.OptIn(UnstableApi::class)
@@ -213,8 +214,8 @@ fun PreviewScreen(
         pageCount = { state.files.size }
     )
     val pagedFile = state.files[pagerState.currentPage.coerceAtMost(state.files.lastIndex)]
-    /* The pager holds a snapshot, so the open row is read live: a rename or an
-       edit made elsewhere shows without reopening. */
+    // The pager holds a snapshot, so the open row is read live and edits made elsewhere show at
+    // once.
     val liveFile by viewModel.observeFile(pagedFile.id)
         .collectAsStateWithLifecycle(initialValue = pagedFile)
     val currentFile = liveFile ?: pagedFile
@@ -304,7 +305,6 @@ fun PreviewScreen(
                         }
                     },
                     actions = {
-                        // Only text has anything the note editor can open.
                         if (MimeTypes.isText(currentFile.mimeType)) {
                             IconButton(
                                 onClick = {
@@ -491,8 +491,8 @@ private fun PreviewPage(
     storedTextScale: Float,
     onTextScaleChange: (Float) -> Unit
 ) {
-    /* One state for the screen's life: re-creating it on save would leave the
-       gesture handler writing to a state nothing renders. */
+    // One state for the screen's life: re-creating it on save would leave the gesture writing to a
+    // state nothing renders.
     var textScale by remember { mutableFloatStateOf(storedTextScale) }
     LaunchedEffect(storedTextScale) {
         if (storedTextScale != textScale) textScale = storedTextScale
@@ -650,8 +650,7 @@ private fun PreviewPage(
 }
 
 /**
- * Content in the viewer draws edge to edge under the overlaid toolbar and the
- * system bars, so scrollable previews pad themselves instead of being clipped.
+ * Previews draw edge to edge under the toolbar and system bars, so scrollable ones pad themselves.
  */
 @Composable
 private fun previewContentPadding(): PaddingValues =
@@ -797,7 +796,13 @@ private fun ArchiveRow(
             .padding(start = INDENT_STEP * row.depth)
             .clip(MaterialTheme.shapes.large)
             .background(MaterialTheme.colorScheme.surfaceContainerLow)
-            .then(if (node.isDirectory) Modifier.clickable { onToggle() } else Modifier)
+            .then(
+                if (node.isDirectory) {
+                    Modifier.clickable(role = Role.Button) { onToggle() }
+                } else {
+                    Modifier
+                }
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Box(
@@ -869,10 +874,9 @@ private fun ArchiveRow(
 }
 
 /**
- * ZIP stores a flat list of paths, so the tree is derived from the names.
- * Folders without an entry of their own are created from the paths below them.
+ * ZIP stores flat paths, so folders without their own entry are created from the paths below them.
  */
-private fun buildArchiveTree(entries: List<PreviewContent.ArchiveEntry>): ArchiveNode {
+private fun buildArchiveTree(entries: List<ArchiveEntry>): ArchiveNode {
     val root = ArchiveNode(path = "", name = "", isDirectory = true)
     for (entry in entries) {
         val segments = entry.name.split(SEPARATOR).filter { it.isNotEmpty() }
@@ -932,21 +936,6 @@ private fun flattenArchive(
     return out
 }
 
-private class ArchiveNode(
-    val path: String,
-    val name: String,
-    val isDirectory: Boolean,
-    var sizeBytes: Long = 0,
-    var compressedBytes: Long = 0,
-    val children: LinkedHashMap<String, ArchiveNode> = LinkedHashMap()
-)
-
-private data class ArchiveRowState(
-    val node: ArchiveNode,
-    val depth: Int,
-    val expanded: Boolean
-)
-
 private const val SEPARATOR = "/"
 private const val ROW_FADE_MS = 180
 private const val CHEVRON_ROTATE_MS = 220
@@ -972,7 +961,6 @@ private fun shareFile(context: Context, file: DriveFile, chooserTitle: String) {
     )
 }
 
-/** Height the overlaid preview toolbar covers at the top of the screen. */
 val PreviewTopBarHeight = 64.dp
 
 private fun openUrl(context: Context, url: String) {

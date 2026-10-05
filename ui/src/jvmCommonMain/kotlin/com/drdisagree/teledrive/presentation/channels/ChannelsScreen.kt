@@ -60,12 +60,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import org.jetbrains.compose.resources.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import org.koin.compose.viewmodel.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.drdisagree.teledrive.domain.model.DriveChannel
+import com.drdisagree.teledrive.presentation.common.CollectSnackbarMessages
+import com.drdisagree.teledrive.presentation.common.Formatters
+import com.drdisagree.teledrive.presentation.common.add
+import com.drdisagree.teledrive.presentation.common.resolve
+import com.drdisagree.teledrive.presentation.components.BlockingProgressDialog
+import com.drdisagree.teledrive.presentation.components.ChannelAvatar
+import com.drdisagree.teledrive.presentation.components.EmptyState
+import com.drdisagree.teledrive.presentation.components.liftedTopAppBarColors
+import com.drdisagree.teledrive.presentation.components.rememberToolbarLift
 import com.drdisagree.teledrive.resources.Res
 import com.drdisagree.teledrive.resources.channels_channel_container
 import com.drdisagree.teledrive.resources.channels_create_one_teledrive_store
@@ -88,21 +99,9 @@ import com.drdisagree.teledrive.resources.common_create
 import com.drdisagree.teledrive.resources.common_delete_forever
 import com.drdisagree.teledrive.resources.common_rename
 import com.drdisagree.teledrive.resources.common_storage_channels
-import com.drdisagree.teledrive.domain.model.DriveChannel
-import com.drdisagree.teledrive.presentation.common.resolve
-import com.drdisagree.teledrive.presentation.common.CollectSnackbarMessages
-import com.drdisagree.teledrive.presentation.common.Formatters
-import com.drdisagree.teledrive.presentation.common.add
-import com.drdisagree.teledrive.presentation.components.BlockingProgressDialog
-import com.drdisagree.teledrive.presentation.components.ChannelAvatar
-import com.drdisagree.teledrive.presentation.components.EmptyState
-import com.drdisagree.teledrive.presentation.components.liftedTopAppBarColors
-import com.drdisagree.teledrive.presentation.components.rememberToolbarLift
+import org.jetbrains.compose.resources.stringResource
+import org.koin.compose.viewmodel.koinViewModel
 
-/**
- * Drives this account owns. Every channel keeps its own index, folders and
- * backup selection, so switching is instant and nothing is re-downloaded.
- */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ChannelsScreen(
@@ -189,7 +188,12 @@ fun ChannelsScreen(
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = { showCreate = true },
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                icon = {
+                    Icon(
+                        Icons.Filled.Add,
+                        contentDescription = stringResource(Res.string.channels_new_drive)
+                    )
+                },
                 text = { Text(stringResource(Res.string.channels_new_drive)) }
             )
         }
@@ -257,7 +261,8 @@ private fun ChannelRow(
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.extraLarge)
             .background(container)
-            .clickable(enabled = !channel.isActive, onClick = onOpen)
+            .clickable(enabled = !channel.isActive, role = Role.Button, onClick = onOpen)
+            .semantics { selected = channel.isActive }
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         ChannelAvatar(channel = channel)
@@ -347,8 +352,8 @@ private fun channelSubtitle(channel: DriveChannel): String = buildString {
 }
 
 /**
- * Deleting a drive destroys every file in it for good, so the name has to be
- * typed out. A tap alone is too easy to make by accident.
+ * Deleting destroys every file in the drive, so the name has to be typed; a tap is too easy by
+ * accident.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable

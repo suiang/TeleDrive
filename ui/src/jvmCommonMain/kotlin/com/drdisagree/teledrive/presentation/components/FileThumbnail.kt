@@ -30,17 +30,12 @@ import com.drdisagree.teledrive.domain.model.DriveFile
 import com.drdisagree.teledrive.domain.model.FileCategory
 import com.drdisagree.teledrive.presentation.common.Formatters
 
-/**
- * Thumbnail with an icon fallback. Image, video and text files attempt
- * thumbnail loading; everything else renders its category icon on a tonal
- * background.
- * Videos carry a play badge so they are distinguishable from stills.
- */
 @Composable
 fun FileThumbnail(
     file: DriveFile,
     modifier: Modifier = Modifier,
-    contentScale: ContentScale = ContentScale.Crop
+    contentScale: ContentScale = ContentScale.Crop,
+    contentDescription: String? = file.name
 ) {
     // Text can carry one too: a note holding a link previews as that link.
     val supportsThumbnail = file.category == FileCategory.IMAGE ||
@@ -60,7 +55,7 @@ fun FileThumbnail(
         if (supportsThumbnail && (file.hasLocalCopy || file.hasRemoteCopy) && !failed) {
             AsyncImage(
                 model = ThumbnailModel(file.id),
-                contentDescription = file.name,
+                contentDescription = contentDescription,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = contentScale,
                 onError = { failed = true }
@@ -68,7 +63,7 @@ fun FileThumbnail(
         } else {
             Icon(
                 imageVector = iconFor(file.category),
-                contentDescription = file.name,
+                contentDescription = contentDescription,
                 modifier = Modifier.size(28.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )

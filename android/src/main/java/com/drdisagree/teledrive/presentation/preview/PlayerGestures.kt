@@ -43,27 +43,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.drdisagree.teledrive.resources.Res
 import com.drdisagree.teledrive.resources.player_brightness
+import com.drdisagree.teledrive.resources.player_toggle_controls
 import com.drdisagree.teledrive.resources.player_volume
-import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 
-private enum class Adjustment { BRIGHTNESS, VOLUME }
-
-private data class AdjustmentLevel(val kind: Adjustment, val level: Float)
-
 /**
- * Touch surface under the controls. A tap toggles the chrome, a vertical drag
- * on the left half sets screen brightness and one on the right half sets media
- * volume, matching what every other video player on the platform does. The
- * readout and the transport buttons share the middle of the screen, so a drag
- * dismisses the chrome and the chrome coming back dismisses the readout. The
- * brightness override lives on the window, so it reverts to the system value
- * when the player leaves the composition.
+ * Left half sets brightness, right half volume; the brightness override lives on the window, so it
+ * reverts when the player leaves.
  */
 @Composable
 fun PlayerGestureArea(
@@ -113,10 +107,17 @@ fun PlayerGestureArea(
         adjustment = null
     }
 
+    val toggleControlsLabel = stringResource(Res.string.player_toggle_controls)
     Box(modifier = modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .matchParentSize()
+                .semantics {
+                    onClick(label = toggleControlsLabel) {
+                        tap()
+                        true
+                    }
+                }
                 .pointerInput(Unit) {
                     detectTapGestures { tap() }
                 }
